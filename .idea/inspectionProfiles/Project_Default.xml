@@ -1,0 +1,80 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <value>
+          <list size="1">
+            <item index="0" class="java.lang.String" itemvalue="vboxapi" />
+          </list>
+        </value>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyPep8Inspection" enabled="true" level="WEAK WARNING" enabled_by_default="true">
+      <option name="ignoredErrors">
+        <list>
+          <option value="E114" />
+          <option value="E501" />
+          <option value="W605" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyUnresolvedReferencesInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredIdentifiers">
+        <list>
+          <option value="PyQt5.uic" />
+          <option value="main.Photoshop.picture1" />
+          <option value="main.Photoshop.logo" />
+          <option value="main.Photoshop.picture2" />
+          <option value="main.Photoshop.RedSlider" />
+          <option value="main.Photoshop.GreenSlider" />
+          <option value="main.Photoshop.BlueSlider" />
+          <option value="main.Photoshop.BlackWhite" />
+          <option value="main.Photoshop.BlackWhiteNoGray" />
+          <option value="main.Photoshop.BrightnessSlider" />
+          <option value="main.Photoshop.NoiseSlider" />
+          <option value="main.Photoshop.DegreeChanger" />
+          <option value="main.Photoshop.CounterclockwiseRotation" />
+          <option value="main.Photoshop.ClockwiseRotation" />
+          <option value="main.Photoshop.OneStepBack" />
+          <option value="main.Photoshop.Inversion" />
+          <option value="main.Photoshop.Back" />
+          <option value="main.Photoshop.VisibilitySlider" />
+          <option value="main.Photoshop.Sharpness" />
+          <option value="main.Photoshop.Smoothing" />
+          <option value="main.Photoshop.Borders" />
+          <option value="main.Photoshop.MoreBright" />
+          <option value="main.Photoshop.LessBright" />
+          <option value="main.Photoshop.FadingSlider" />
+          <option value="main.Photoshop.Fading" />
+          <option value="main.Photoshop.LessShadSlider" />
+          <option value="main.Photoshop.MoreShadSlider" />
+          <option value="main.Photoshop.ContrastSlider" />
+          <option value="main.Photoshop.Contrast" />
+          <option value="main.Photoshop.OneStepBack1" />
+          <option value="main.Photoshop.OneStepBack2" />
+          <option value="main.Photoshop.ShadSlider" />
+          <option value="main.Photoshop.Random" />
+          <option value="main.Photoshop.Contour" />
+          <option value="main.Photoshop.Party" />
+          <option value="main.Photoshop.Nostalgia" />
+          <option value="main.Photoshop.Aqua" />
+          <option value="main.Photoshop.Cold" />
+          <option value="main.Photoshop.NightCity" />
+          <option value="main.Photoshop.Qlow" />
+          <option value="main.Photoshop.Glow" />
+          <option value="main.Photoshop.Save" />
+          <option value="main.Photoshop.Sunrise" />
+          <option value="main.Photoshop.Summer" />
+          <option value="main.Photoshop.Autumn" />
+          <option value="main.Photoshop.Forest" />
+          <option value="main.FirstWindow.StartButton" />
+          <option value="main.FirstWindow.first_step" />
+          <option value="main.First.StartButton" />
+          <option value="main.Instruction.PlaceForInstruction" />
+          <option value="main.First.InstructionButton" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
