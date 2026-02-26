@@ -8,8 +8,90 @@
 
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
-const char* ssid = "SUTD_Wifi";
-const char* password = "TODO ADD";
+const char* ssid = "FTS(WiFi) I'm Out";
+const char* password = "Meiz:3lol";
+
+void connectWiFi() {
+  Serial.print("Connecting to WiFi");
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi Connected!");
+  Serial.print("IP: ");
+  Serial.println(WiFi.localIP());
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(2000);
+
+  SPI.begin(4, 5, 6, 7);
+  mfrc522.PCD_Init();
+
+  connectWiFi();
+  Serial.println("Ready to scan...");
+}
+
+void loop() {
+
+  if (!mfrc522.PICC_IsNewCardPresent()) return;
+  if (!mfrc522.PICC_ReadCardSerial()) return;
+
+  String uidString = "";
+
+  for (byte i = 0; i < mfrc522.uid.size; i++) {
+    if (mfrc522.uid.uidByte[i] < 0x10) uidString += "0";
+    uidString += String(mfrc522.uid.uidByte[i], HEX);
+  }
+
+  uidString.toUpperCase();
+
+  Serial.print("Scanned UID: ");
+  Serial.println(uidString);
+
+  if (WiFi.status() == WL_CONNECTED) {
+
+    HTTPClient http;
+
+    String url = "http://httpbin.org/get?uid=" + uidString;
+
+    http.begin(url);
+
+    int httpCode = http.GET();
+
+    Serial.print("HTTP Code: ");
+    Serial.println(httpCode);
+
+    if (httpCode > 0) {
+      String payload = http.getString();
+      Serial.println("Server Response:");
+      Serial.println(payload);
+    }
+
+    http.end();
+  }
+
+  mfrc522.PICC_HaltA();
+}
+
+//for OG test
+/* 
+#include <SPI.h>
+#include <MFRC522.h>
+#include <WiFi.h>
+#include <HTTPClient.h>
+
+#define SS_PIN   7
+#define RST_PIN  3
+
+MFRC522 mfrc522(SS_PIN, RST_PIN);
+
+const char* ssid = "FTS(WiFi) I'm Out";
+const char* password = "Meiz:3lol";
 
 // ===== CARD STRUCT =====
 struct Card {
@@ -128,4 +210,4 @@ void loop() {
   }
 
   mfrc522.PICC_HaltA();
-}
+}*/
