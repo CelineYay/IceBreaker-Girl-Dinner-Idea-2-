@@ -9,7 +9,7 @@
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 const char* ssid = "SUTD_Wifi";
-const char* password = "Zlin3@SUTDp@55_1";
+const char* password = "TODO ADD";
 
 // ===== CARD STRUCT =====
 struct Card {
