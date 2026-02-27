@@ -1,57 +1,173 @@
 #include <WiFi.h>
+#include <WebServer.h>
 #include <Arduino_GFX_Library.h>
+#include "TCA9554.h"
+#include <Wire.h>
 
-// ---- Display Setup (based on GFX HelloWorld example) ----
+// ================= WIFI =================
+const char* ssid = "Type in wifi name";
+const char* password = "Type in wifi pass"; 
+
+WebServer server(80);
+
+// ================= LCD =================
+#define GFX_BL 25
+
+TCA9554 TCA(0x20);
+
 Arduino_DataBus *bus = new Arduino_ESP32SPI(
-  27 /* DC */, 5 /* CS */, 18 /* SCK */, 23 /* MOSI */, 19 /* MISO */
-);
-Arduino_GFX *gfx = new Arduino_ST7796(
-  bus, -1 /* RST */, 0 /* rotation */, true /* IPS */
+  27,  // DC
+  5,   // CS
+  18,  // SCK
+  23,  // MOSI
+  19   // MISO
 );
 
-// ---- WiFi Configuration ----
-const char* ssid     = "FTS(WiFi) I'm Out";
-const char* password = "Meiz:3lol";
+Arduino_GFX *gfx = new Arduino_ST7796(
+  bus, GFX_NOT_DEFINED, 0, true
+);
+
+// ================= DATA =================
+String lastUID = "None";
+String lastName = "None";
+String lastNumber = "None";
+
+void updateLCD() {
+  gfx->fillScreen(RGB565_BLACK);
+  gfx->setTextColor(RGB565_WHITE);
+  gfx->setTextSize(2);
+
+  gfx->setCursor(20, 80);
+  gfx->println("ESP32 RFID Display");
+
+  gfx->setCursor(20, 140);
+  gfx->print("UID: ");
+  gfx->println(lastUID);
+
+  gfx->setCursor(20, 180);
+  gfx->print("Name: ");
+  gfx->println(lastName);
+
+  gfx->setCursor(20, 220);
+  gfx->print("Number: ");
+  gfx->println(lastNumber);
+}
+
+void handleReceive() {
+  if (server.hasArg("uid"))  lastUID = server.arg("uid");
+  if (server.hasArg("name")) lastName = server.arg("name");
+  if (server.hasArg("num"))  lastNumber = server.arg("num");
+
+  updateLCD();
+  server.send(200, "text/plain", "OK");
+}
 
 void setup() {
+
   Serial.begin(115200);
 
-  // Init Display
+  // LCD reset using TCA9554
+  Wire.begin(21,22);
+  TCA.begin();
+  TCA.pinMode1(0,OUTPUT);
+
+  TCA.write1(0,1); delay(10);
+  TCA.write1(0,0); delay(10);
+  TCA.write1(0,1); delay(200);
+
   gfx->begin();
-  gfx->fillScreen(0x0000);
-  gfx->setTextSize(2);
-  gfx->setTextColor(0xFFFF);
+  pinMode(GFX_BL, OUTPUT);
+  digitalWrite(GFX_BL, HIGH);
 
-  // First message
-  gfx->setCursor(10, 220);
-  gfx->println("No connections yet");
+  WiFi.begin(ssid,password);
+  while(WiFi.status()!=WL_CONNECTED) delay(500);
 
-  // Start WiFi
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
+  Serial.print("LCD Board IP: ");
+  Serial.println(WiFi.localIP());
 
-  unsigned long start = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - start < 15000) {
-    delay(500);
-    Serial.print(".");
-  }
+  server.on("/receive", handleReceive);
+  server.begin();
 
-  if (WiFi.status() == WL_CONNECTED) {
-    // Wi-Fi connected
-    String msg = "Connected with ";
-    msg += WiFi.SSID();
-
-    gfx->fillScreen(0x0000);
-    gfx->setCursor(10, 220);
-    gfx->println(msg);
-  } else {
-    // Failed
-    gfx->fillScreen(0x0000);
-    gfx->setCursor(10, 220);
-    gfx->println("WiFi failed");
-  }
+  updateLCD();
 }
 
 void loop() {
-  // Nothing else here
+  server.handleClient();
+}
+
+// ================= FETCH UID =================
+void fetchUID()
+{
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+
+  // ⚠️ IMPORTANT:
+  // This must match the LAST scanned UID.
+  // Since httpbin does not store anything,
+  // this will only work if you manually change UID.
+  http.begin(serverBase + String(lastUID));
+
+  int httpCode = http.GET();
+
+  if (httpCode == 200)
+  {
+    String payload = http.getString();
+
+    DynamicJsonDocument doc(1024);
+    deserializeJson(doc, payload);
+
+    String uid = doc["args"]["uid"];
+    uid.toUpperCase();
+
+    if (uid != "" && uid != lastUID)
+    {
+      lastUID = uid;
+
+      String name = findName(uid);
+
+      gfx->fillScreen(RGB565_BLACK);
+      gfx->setCursor(20, 40);
+      gfx->setTextColor(RGB565_WHITE);
+      gfx->setTextSize(2);
+
+      gfx->println("UID:");
+      gfx->println(uid);
+      gfx->println("");
+      gfx->println("Name:");
+      gfx->println(name);
+    }
+  }
+
+  http.end();
+}
+
+// ================= SETUP =================
+void setup()
+{
+  Serial.begin(115200);
+
+  Wire.begin(21, 22);
+  TCA.begin();
+  TCA.pinMode1(0, OUTPUT);
+
+  TCA.write1(0, 1);
+  delay(10);
+  TCA.write1(0, 0);
+  delay(10);
+  TCA.write1(0, 1);
+  delay(200);
+
+  gfx->begin();
+  pinMode(GFX_BL, OUTPUT);
+  digitalWrite(GFX_BL, HIGH);
+
+  connectWiFi();
+}
+
+// ================= LOOP =================
+void loop()
+{
+  fetchUID();
+  delay(3000);
 }
