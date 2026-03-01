@@ -10,10 +10,10 @@
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 
 // ================= WIFI =================
-const char* ssid = "Type in wifi name";
-const char* password = "Type in wifi pass"; 
+const char* ssid = "FTS(WiFi) I'M Out";
+const char* password = "Meiz:3lol";
 
-// 🔥 CHANGE THIS if LCD IP changes
+// 🔥 Change if LCD IP changes
 String lcdServer = "http://10.182.118.175/receive";
 
 // ================= CARD DATABASE =================
@@ -21,21 +21,22 @@ struct Card {
   byte uid[4];
   int number;
   const char* name;
+  const char* sharedInterest;   // NEW FIELD
 };
 
 Card cards[] = {
-  {{0x0B,0xF9,0x29,0x9D},1,"Abby Lim"},
-  {{0x5B,0x89,0x3A,0x9D},2,"Bob Liu"},
-  {{0x0B,0xC5,0x3C,0x9D},3,"Catherine Ko"},
-  {{0x7B,0x6E,0x02,0x9D},4,"David Drapper"},
-  {{0xFB,0x16,0x20,0x9D},5,"Elvin Wong"},
-  {{0xFB,0xDD,0x01,0x9D},6,"Francis Chan"},
-  {{0x7B,0xF4,0x32,0x9D},7,"George Teo"},
-  {{0x5B,0xAE,0x27,0x9D},8,"Henry Toa"},
-  {{0x8B,0x04,0x17,0x9D},9,"Illhan Su"},
-  {{0x7B,0x5F,0x4E,0x9D},10,"Joshua Luo"},
-  {{0x27,0xF4,0x53,0x24},11,"Card"},
-  {{0x15,0xFD,0x41,0xE0},12,"Blue tear thing"}
+  {{0x0B,0xF9,0x29,0x9D},1,"Abby Lim","UX Design"},
+  {{0x5B,0x89,0x3A,0x9D},2,"Bob Liu","AIML & IOT"},
+  {{0x0B,0xC5,0x3C,0x9D},3,"Catherine Ko","IOT"},
+  {{0x7B,0x6E,0x02,0x9D},4,"David Drapper","AIML"},
+  {{0xFB,0x16,0x20,0x9D},5,"Elvin Wong","Startups"},
+  {{0xFB,0xDD,0x01,0x9D},6,"Francis Chan","Startups & UX Design"},
+  {{0x7B,0xF4,0x32,0x9D},7,"George Teo","Startups & AIML"},
+  {{0x5B,0xAE,0x27,0x9D},8,"Henry Toa","Startups & IOT"},
+  {{0x8B,0x04,0x17,0x9D},9,"Illhan Su","AIML & UX Design"},
+  {{0x7B,0x5F,0x4E,0x9D},10,"Joshua Luo","UX Design & IOT"},
+  {{0x27,0xF4,0x53,0x24},11,"Card","xxxSI"},
+  {{0x15,0xFD,0x41,0xE0},12,"Blue tear thing","xxxSI"}
 };
 
 int totalCards = sizeof(cards)/sizeof(cards[0]);
@@ -83,7 +84,7 @@ void loop() {
   if (!mfrc522.PICC_IsNewCardPresent()) return;
   if (!mfrc522.PICC_ReadCardSerial()) return;
 
-  // ===== Build UID string =====
+  // ===== Build UID =====
   String uid="";
   for(byte i=0;i<mfrc522.uid.size;i++){
     if(mfrc522.uid.uidByte[i]<0x10) uid+="0";
@@ -94,22 +95,26 @@ void loop() {
   // ===== Match card =====
   String name="Unknown";
   String num="0";
+  String sharedInterest="None";
 
   Card* card=findCard(mfrc522.uid.uidByte);
   if(card!=NULL){
     name=card->name;
     num=String(card->number);
+    sharedInterest=card->sharedInterest;
   }
 
   // ===== URL encode spaces =====
   name.replace(" ", "%20");
+  sharedInterest.replace(" ", "%20");
 
   // ===== Send to LCD =====
   HTTPClient http;
 
   String url = lcdServer + "?uid=" + uid +
                "&name=" + name +
-               "&num=" + num;
+               "&num=" + num +
+               "&interest=" + sharedInterest;
 
   Serial.println("Sending to LCD:");
   Serial.println(url);
@@ -119,14 +124,6 @@ void loop() {
 
   Serial.print("HTTP Code: ");
   Serial.println(httpCode);
-
-  if (httpCode > 0) {
-    String payload = http.getString();
-    Serial.println("Response:");
-    Serial.println(payload);
-  } else {
-    Serial.println("HTTP Request Failed");
-  }
 
   http.end();
 
