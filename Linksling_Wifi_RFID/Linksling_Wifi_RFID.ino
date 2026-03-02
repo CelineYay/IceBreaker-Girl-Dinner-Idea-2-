@@ -1,131 +1,472 @@
+#include <Arduino_GFX_Library.h>
+#include <Adafruit_GFX.h>
+#include <Fonts/FreeSans9pt7b.h>
+#include <Fonts/FreeSansBold9pt7b.h>
+#include <Wire.h>
 #include <WiFi.h>
-#include <HTTPClient.h>
-#include <SPI.h>
-#include <MFRC522.h>
+#include <WebServer.h>
+#include "time.h"
+#include <math.h>
 
-// ================= RFID =================
-#define SS_PIN 7
-#define RST_PIN 3
+// ---------------- Pins / Display ----------------
+#define I2C_SDA 21
+#define I2C_SCL 22
+#define PIN_BL  25
 
-MFRC522 mfrc522(SS_PIN, RST_PIN);
+#define C(r,g,b) (uint16_t)(((uint16_t)(r&0xF8)<<8)|((uint16_t)(g&0xFC)<<3)|(b>>3))
 
-// ================= WIFI =================
-const char* ssid = "FTS(WiFi) I'M Out";
-const char* password = "Meiz:3lol";
+Arduino_DataBus *bus = new Arduino_ESP32SPI(27, 5, 18, 23, 19);
+Arduino_GFX *gfx    = new Arduino_ST7796(bus, GFX_NOT_DEFINED, 0, true);
 
-// 🔥 Change if LCD IP changes
-String lcdServer = "http://10.182.118.175/receive";
+// ---------------- WiFi / NTP ----------------
+#define WIFI_SSID  "FTS(WiFi) I'm Out"
+#define WIFI_PASS  "Meiz:3lol"
+#define NTP_SERVER "pool.ntp.org"
+#define GMT_OFFSET 28800
+#define DST_OFFSET 0
 
-// ================= CARD DATABASE =================
-struct Card {
-  byte uid[4];
-  int number;
-  const char* name;
-  const char* sharedInterest;   // NEW FIELD
-};
+WebServer server(80);
 
-Card cards[] = {
-  {{0x0B,0xF9,0x29,0x9D},1,"Abby Lim","UX Design"},
-  {{0x5B,0x89,0x3A,0x9D},2,"Bob Liu","AIML & IOT"},
-  {{0x0B,0xC5,0x3C,0x9D},3,"Catherine Ko","IOT"},
-  {{0x7B,0x6E,0x02,0x9D},4,"David Drapper","AIML"},
-  {{0xFB,0x16,0x20,0x9D},5,"Elvin Wong","Startups"},
-  {{0xFB,0xDD,0x01,0x9D},6,"Francis Chan","Startups & UX Design"},
-  {{0x7B,0xF4,0x32,0x9D},7,"George Teo","Startups & AIML"},
-  {{0x5B,0xAE,0x27,0x9D},8,"Henry Toa","Startups & IOT"},
-  {{0x8B,0x04,0x17,0x9D},9,"Illhan Su","AIML & UX Design"},
-  {{0x7B,0x5F,0x4E,0x9D},10,"Joshua Luo","UX Design & IOT"},
-  {{0x27,0xF4,0x53,0x24},11,"Card","xxxSI"},
-  {{0x15,0xFD,0x41,0xE0},12,"Blue tear thing","xxxSI"}
-};
+const char* MON[] = { "JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC" };
 
-int totalCards = sizeof(cards)/sizeof(cards[0]);
+// ---------------- Colors ----------------
+#define WHITE      C(255,255,255)
+#define DARK_TEXT  C( 45, 55, 72)
+#define MID_TEXT   C(113,128,150)
+#define LIGHT_TEXT C(160,174,192)
+#define PURPLE     C(123, 97,255)
+#define ORANGE     C(240,139, 77)
+#define CARD_BG    C(255,255,255)
+#define CARD_BDR   C(214,204,255)
+#define BAR_BG     C(237,242,247)
+#define GREEN_CON  C(  0,180, 90)
+#define HEADER_BG  C(123, 97,255)
 
-// ================= FIND CARD =================
-Card* findCard(byte *uid){
-  for(int i=0;i<totalCards;i++){
-    bool match=true;
-    for(int j=0;j<4;j++){
-      if(uid[j]!=cards[i].uid[j]){
-        match=false;
-        break;
+#define TAG_UX_TXT  C(123, 97,255)
+#define TAG_UX_BG   C(240,236,255)
+#define TAG_UX_BDR  C(214,204,255)
+#define TAG_IOT_TXT C(  0,163,196)
+#define TAG_IOT_BG  C(230,255,250)
+#define TAG_IOT_BDR C(178,245,234)
+#define TAG_AI_TXT  C(240,139, 77)
+#define TAG_AI_BG   C(255,245,240)
+#define TAG_AI_BDR  C(254,235,200)
+#define TAG_ST_TXT  C(237,100,166)
+#define TAG_ST_BG   C(255,245,247)
+#define TAG_ST_BDR  C(254,215,226)
+
+// Rays colors
+#define CONF_PINK   C(255,  64, 129)
+#define CONF_ORANGE C(255, 152,   0)
+#define CONF_BLUE   C( 41,  98, 255)
+
+// ---------------- Profile ----------------
+#define MY_NAME    "Wong Yu Xuan"
+#define MY_PHONE   "+65 12873425"
+#define MY_EMAIL   "wyx@gmail.com"
+
+// ---------------- Connection state (what CONNECTED card shows) ----------------
+String connectedName     = "None";
+String connectedUID      = "";
+String connectedNum      = "";
+String connectedInterest = "None";
+bool   hasConnection     = false;
+
+// ---------------- Pending state (received while popup shows) ----------------
+bool   pendingConnectionUpdate = false;
+String pendingName = "";
+String pendingUID  = "";
+String pendingNum  = "";
+String pendingInterest = "";
+
+// ---------------- Popup state ----------------
+bool showPopup = false;
+uint32_t popupStart = 0;
+uint32_t lastClock = 0;
+
+String popupName = "";
+String popupUID = "";
+String popupInterest = "";
+
+// ---------------- Helpers ----------------
+void fillRR(int16_t x,int16_t y,int16_t w,int16_t h,int16_t r,uint16_t c){ gfx->fillRoundRect(x,y,w,h,r,c); }
+void drawRR(int16_t x,int16_t y,int16_t w,int16_t h,int16_t r,uint16_t c){ gfx->drawRoundRect(x,y,w,h,r,c); }
+
+void printSans(int x, int y, const char* txt, uint16_t col) {
+  gfx->setFont(&FreeSans9pt7b);
+  gfx->setTextColor(col);
+  gfx->setCursor(x, y);
+  gfx->print(txt);
+  gfx->setFont(NULL);
+}
+void printSansBold(int x, int y, const char* txt, uint16_t col) {
+  gfx->setFont(&FreeSansBold9pt7b);
+  gfx->setTextColor(col);
+  gfx->setCursor(x, y);
+  gfx->print(txt);
+  gfx->setFont(NULL);
+}
+void printLabel(int x, int y, const char* txt, uint16_t col) {
+  gfx->setFont(NULL);
+  gfx->setTextSize(1);
+  gfx->setTextColor(col);
+  gfx->setCursor(x, y);
+  gfx->print(txt);
+}
+
+// ---------------- UI: Background + Clock ----------------
+void drawBackground() {
+  for (int i = 0; i < 480; i++) {
+    float t   = (float)i / 479.0f;
+    uint8_t r = 240 + (uint8_t)((253-240)*t);
+    uint8_t g = 139 + (uint8_t)((242-139)*t);
+    uint8_t b =  77 + (uint8_t)((233- 77)*t);
+    gfx->drawFastHLine(0, i, 320, C(r,g,b));
+  }
+}
+
+void drawClock() {
+  struct tm t;
+  if (!getLocalTime(&t)) return;
+
+  gfx->fillRect(0, 0, 320, 54, HEADER_BG);
+  gfx->drawFastHLine(0, 54, 320, C(90,60,200));
+  printSansBold(76, 22, "IDEA EVENT", WHITE);
+  gfx->drawFastHLine(0, 30, 320, C(180,160,255));
+
+  char tbuf[12];
+  sprintf(tbuf, "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+  char dbuf[14];
+  sprintf(dbuf, "%02d %s %04d", t.tm_mday, MON[t.tm_mon], t.tm_year+1900);
+  printLabel(14, 40, tbuf, C(220,210,255));
+  printLabel(200, 40, dbuf, C(220,210,255));
+}
+
+// ---------------- Popup rays (draw once when popup triggers) ----------------
+void drawRaysBehindPopup() {
+  // popup dimensions match drawPopup()
+  int boxW = 290, boxH = 210;
+  int boxX = (320 - boxW) / 2;
+  int boxY = (480 - boxH) / 2;
+  int cx = boxX + boxW / 2;
+  int cy = boxY + boxH / 2;
+
+  uint16_t cols[3] = { CONF_PINK, CONF_ORANGE, CONF_BLUE };
+
+  for (int i = 0; i < 24; i++) {
+    float ang = (6.2831853f * i) / 24.0f;
+    int ex = cx + (int)(cosf(ang) * 400);
+    int ey = cy + (int)(sinf(ang) * 600);
+    uint16_t col = cols[i % 3];
+    gfx->drawLine(cx, cy, ex, ey, col);
+    gfx->drawLine(cx+1, cy, ex+1, ey, col);
+  }
+}
+
+// ---------------- Center-wrapped text ----------------
+void drawWrappedCentered(int boxX, int boxW, int startY, int lineGap, int maxWidth, const String &text) {
+  auto textWidth = [&](const String &s) -> int {
+    int16_t x1, y1; uint16_t w, h;
+    gfx->getTextBounds(s, 0, 0, &x1, &y1, &w, &h);
+    return (int)w;
+  };
+  auto printCentered = [&](int baselineY, const String &s) {
+    int w = textWidth(s);
+    gfx->setCursor(boxX + (boxW - w) / 2, baselineY);
+    gfx->print(s);
+  };
+
+  String line = "", word = "";
+  int y = startY;
+
+  for (int i = 0; i < (int)text.length(); i++) {
+    char c = text[i];
+    if (c == ' ' || i == (int)text.length() - 1) {
+      if (i == (int)text.length() - 1 && c != ' ') word += c;
+
+      String test = line;
+      if (test.length() > 0) test += " ";
+      test += word;
+
+      if (line.length() > 0 && textWidth(test) > maxWidth) {
+        printCentered(y, line);
+        y += lineGap;
+        line = word;
+      } else {
+        if (line.length() > 0) line += " ";
+        line += word;
       }
-    }
-    if(match) return &cards[i];
+      word = "";
+    } else word += c;
   }
-  return NULL;
+  if (line.length() > 0) printCentered(y, line);
 }
 
-// ================= SETUP =================
+// ---------------- Popup ----------------
+void drawPopup() {
+  int boxW = 290;
+  int boxH = 210;
+  int x = (320 - boxW) / 2;
+  int y = (480 - boxH) / 2;
+
+  gfx->fillRoundRect(x, y, boxW, boxH, 18, WHITE);
+  gfx->drawRoundRect(x, y, boxW, boxH, 18, PURPLE);
+
+  int padding = 18;
+  int maxTextW = boxW - padding * 2;
+  int gap = 22;
+
+  gfx->setFont(&FreeSansBold9pt7b);
+  gfx->setTextColor(PURPLE);
+  drawWrappedCentered(x, boxW, y + 45, gap, maxTextW, "Matched");
+
+  gfx->setFont(&FreeSans9pt7b);
+  gfx->setTextColor(DARK_TEXT);
+  drawWrappedCentered(x, boxW, y + 75, gap, maxTextW, popupName + "!");
+
+  gfx->setFont(&FreeSansBold9pt7b);
+  gfx->setTextColor(PURPLE);
+  drawWrappedCentered(x, boxW, y + 120, gap, maxTextW, "Shared Interest:");
+
+  gfx->setFont(&FreeSans9pt7b);
+  gfx->setTextColor(ORANGE);
+  drawWrappedCentered(x, boxW, y + 150, gap, maxTextW, popupInterest);
+
+  gfx->setFont(NULL);
+}
+
+// ---------------- Main Screen (your UI, CONNECTED dynamic) ----------------
+void drawScreen() {
+  drawBackground();
+
+  int px = 12;
+  int cw = 296;
+
+  // HEADER
+  gfx->fillRect(0, 0, 320, 54, HEADER_BG);
+  gfx->drawFastHLine(0, 54, 320, C(90,60,200));
+  printSansBold(76, 22, "IDEA EVENT", WHITE);
+  gfx->drawFastHLine(0, 30, 320, C(180,160,255));
+  printLabel(14, 40, "--:--:--",    C(220,210,255));
+  printLabel(200, 40, "-- --- ----", C(220,210,255));
+
+  int y = 60;
+
+  // PROFILE
+  int profileH = 120;
+  fillRR(px, y, cw, profileH, 10, CARD_BG);
+  drawRR(px, y, cw, profileH, 10, CARD_BDR);
+  fillRR(px, y+8, 3, profileH-16, 2, PURPLE);
+  printSansBold(px+12, y+22, MY_NAME, PURPLE);
+
+  int titleBaseY = y+44;
+  printSansBold(px+12, titleBaseY, "Student", ORANGE);
+  gfx->fillCircle(px+12+76, titleBaseY-4, 2, LIGHT_TEXT);
+  printSans(px+12+84, titleBaseY, "SUTD", MID_TEXT);
+
+  gfx->drawFastHLine(px+8, y+54, cw-16, CARD_BDR);
+  printSansBold(px+12, y+74, "TEL", ORANGE);
+  printSans(px+52, y+74, MY_PHONE, DARK_TEXT);
+  printSansBold(px+12, y+96, "EML", ORANGE);
+  printSans(px+52, y+96, MY_EMAIL, DARK_TEXT);
+
+  y += profileH + 4;
+
+  // INTERESTS
+  int interestH = 64;
+  fillRR(px, y, cw, interestH, 10, CARD_BG);
+  drawRR(px, y, cw, interestH, 10, CARD_BDR);
+  fillRR(px, y+6, 3, interestH-12, 2, PURPLE);
+  printLabel(px+12, y+10, "CORE INTERESTS", LIGHT_TEXT);
+
+  struct { const char* lbl; uint16_t txt,bg,bdr; int w; } tags[4] = {
+    { "UX Design", TAG_UX_TXT,  TAG_UX_BG,  TAG_UX_BDR,  95 },
+    { "IoT",       TAG_IOT_TXT, TAG_IOT_BG, TAG_IOT_BDR, 41 },
+    { "AI/ML",     TAG_AI_TXT,  TAG_AI_BG,  TAG_AI_BDR,  59 },
+    { "StartUp",   TAG_ST_TXT,  TAG_ST_BG,  TAG_ST_BDR,  75 },
+  };
+
+  int tx = px+8, ty = y+26;
+  for (int i = 0; i < 4; i++) {
+    fillRR(tx, ty, tags[i].w, 26, 13, tags[i].bg);
+    drawRR(tx, ty, tags[i].w, 26, 13, tags[i].bdr);
+    gfx->setFont(&FreeSans9pt7b);
+    gfx->setTextColor(tags[i].txt);
+    gfx->setCursor(tx+7, ty+18);
+    gfx->print(tags[i].lbl);
+    gfx->setFont(NULL);
+    tx += tags[i].w + 5;
+  }
+
+  y += interestH + 4;
+
+  // TOP MATCHES
+  int matchH = 148;
+  fillRR(px, y, cw, matchH, 10, CARD_BG);
+  drawRR(px, y, cw, matchH, 10, CARD_BDR);
+  fillRR(px, y+6, 3, matchH-12, 2, PURPLE);
+  printLabel(px+12, y+10, "TOP MATCHES", LIGHT_TEXT);
+
+  struct { const char* name; const char* skills; uint8_t pct; } matches[3] = {
+    { "David Tan",   "UX . IoT",  88 },
+    { "Sarah Lim",   "AI/ML",     75 },
+    { "Amir Hassan", "StartUps",  62 },
+  };
+
+  int barX = px+12, barW = 184, pctX = barX + barW + 4, my = y + 20;
+  for (int i = 0; i < 3; i++) {
+    fillRR(px+8, my, cw-16, 40, 6, C(248,250,252));
+    drawRR(px+8, my, cw-16, 40, 6, C(226,232,240));
+    printSansBold(px+14, my+16, matches[i].name, DARK_TEXT);
+    printLabel(px+cw-14-(int)strlen(matches[i].skills)*6, my+5, matches[i].skills, MID_TEXT);
+
+    int by = my+26;
+    fillRR(barX, by, barW, 7, 3, BAR_BG);
+    int fw = (barW * matches[i].pct) / 100;
+    fillRR(barX, by, fw, 7, 3, ORANGE);
+
+    char pbuf[5]; sprintf(pbuf, "%d%%", matches[i].pct);
+    printLabel(pctX, by, pbuf, PURPLE);
+
+    my += 42;
+  }
+
+  y += matchH + 4;
+
+  // CONNECTED (dynamic)
+  int conH = 480 - y - 2;
+  fillRR(px, y, cw, conH, 10, CARD_BG);
+  drawRR(px, y, cw, conH, 10, CARD_BDR);
+  fillRR(px, y+6, 3, conH-12, 2, GREEN_CON);
+  printLabel(px+12, y+10, "CONNECTED", LIGHT_TEXT);
+
+  int avCX = px+30;
+  int avCY = y + conH/2 + 4;
+  gfx->fillCircle(avCX, avCY, 16, PURPLE);
+
+  String showName = hasConnection ? connectedName : String("No connection yet");
+  String showInterest = hasConnection ? connectedInterest : String("—");
+  printSansBold(avCX+24, avCY-4, showName.c_str(), DARK_TEXT);
+
+  // palette based on interest keyword
+  uint16_t tagTXT = TAG_UX_TXT, tagBG = TAG_UX_BG, tagBDR = TAG_UX_BDR;
+  if (showInterest.indexOf("IoT") >= 0) { tagTXT=TAG_IOT_TXT; tagBG=TAG_IOT_BG; tagBDR=TAG_IOT_BDR; }
+  else if (showInterest.indexOf("AI") >= 0) { tagTXT=TAG_AI_TXT; tagBG=TAG_AI_BG; tagBDR=TAG_AI_BDR; }
+  else if (showInterest.indexOf("Start") >= 0) { tagTXT=TAG_ST_TXT; tagBG=TAG_ST_BG; tagBDR=TAG_ST_BDR; }
+  else if (showInterest.indexOf("Web") >= 0) { tagTXT=ORANGE; tagBG=C(255,245,240); tagBDR=C(254,235,200); }
+
+  gfx->setFont(&FreeSans9pt7b);
+  int16_t x1,y1; uint16_t tw,th;
+  gfx->getTextBounds(showInterest, 0, 0, &x1, &y1, &tw, &th);
+  gfx->setFont(NULL);
+
+  int uth=24;
+  int utw=(int)tw+20; if (utw<60) utw=60; if (utw>160) utw=160;
+  fillRR(avCX+24, avCY+8, utw, uth, 12, tagBG);
+  drawRR(avCX+24, avCY+8, utw, uth, 12, tagBDR);
+  gfx->setFont(&FreeSans9pt7b);
+  gfx->setTextColor(tagTXT);
+  gfx->setCursor(avCX+31, avCY+24);
+  gfx->print(showInterest);
+  gfx->setFont(NULL);
+
+  if (hasConnection) {
+    int bdgW=101, bdgH=24;
+    int bdgX=px+cw-bdgW-8;
+    int bdgY=avCY-bdgH/2;
+    fillRR(bdgX, bdgY, bdgW, bdgH, 12, C(220,252,231));
+    drawRR(bdgX, bdgY, bdgW, bdgH, 12, C(134,239,172));
+    gfx->setFont(&FreeSans9pt7b);
+    gfx->setTextColor(GREEN_CON);
+    gfx->setCursor(bdgX+8, bdgY+17);
+    gfx->print("Connected");
+    gfx->setFont(NULL);
+  }
+}
+
+// ---------------- Receive endpoint (POPUP FIRST, CONNECTED UPDATES AFTER POPUP) ----------------
+void handleReceive() {
+  if (server.hasArg("name"))     pendingName     = server.arg("name");
+  if (server.hasArg("uid"))      pendingUID      = server.arg("uid");
+  if (server.hasArg("num"))      pendingNum      = server.arg("num");
+  if (server.hasArg("interest")) pendingInterest = server.arg("interest");
+
+  pendingConnectionUpdate = true;
+
+  // popup shows immediately using pending
+  popupName = pendingName;
+  popupUID  = pendingUID;
+  popupInterest = pendingInterest;
+
+  showPopup = true;
+  popupStart = millis();
+
+  // draw celebration on current screen (connected still old)
+  drawRaysBehindPopup();
+  drawPopup();
+
+  server.send(200, "text/plain", "OK");
+}
+
 void setup() {
-
   Serial.begin(115200);
+  Wire.begin(I2C_SDA, I2C_SCL);
 
-  SPI.begin(4,5,6,7);
-  mfrc522.PCD_Init();
+  // TCA9554 reset sequence
+  Wire.beginTransmission(0x20); Wire.write(0x03); Wire.write(0xFE); Wire.endTransmission();
+  Wire.beginTransmission(0x20); Wire.write(0x01); Wire.write(0xFF); Wire.endTransmission();
+  delay(10);
+  Wire.beginTransmission(0x20); Wire.write(0x01); Wire.write(0xFE); Wire.endTransmission();
+  delay(20);
+  Wire.beginTransmission(0x20); Wire.write(0x01); Wire.write(0xFF); Wire.endTransmission();
+  delay(200);
 
-  Serial.print("Connecting to WiFi");
-  WiFi.begin(ssid,password);
-  while(WiFi.status()!=WL_CONNECTED){
-    delay(500);
-    Serial.print(".");
-  }
+  pinMode(PIN_BL, OUTPUT);
+  digitalWrite(PIN_BL, HIGH);
+  gfx->begin();
 
-  Serial.println("\nWiFi Connected!");
-  Serial.print("IP: ");
+  // WiFi + NTP
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  while (WiFi.status() != WL_CONNECTED) delay(300);
+
+  configTime(GMT_OFFSET, DST_OFFSET, NTP_SERVER);
+
+  server.on("/receive", handleReceive);
+  server.begin();
+
+  drawScreen();
+  drawClock();
+
+  Serial.print("LCD IP: ");
   Serial.println(WiFi.localIP());
-
-  Serial.println("Ready to scan...");
 }
 
-// ================= LOOP =================
 void loop() {
+  server.handleClient();
 
-  if (!mfrc522.PICC_IsNewCardPresent()) return;
-  if (!mfrc522.PICC_ReadCardSerial()) return;
-
-  // ===== Build UID =====
-  String uid="";
-  for(byte i=0;i<mfrc522.uid.size;i++){
-    if(mfrc522.uid.uidByte[i]<0x10) uid+="0";
-    uid+=String(mfrc522.uid.uidByte[i],HEX);
-  }
-  uid.toUpperCase();
-
-  // ===== Match card =====
-  String name="Unknown";
-  String num="0";
-  String sharedInterest="None";
-
-  Card* card=findCard(mfrc522.uid.uidByte);
-  if(card!=NULL){
-    name=card->name;
-    num=String(card->number);
-    sharedInterest=card->sharedInterest;
+  // update clock only when popup isn't showing
+  if (!showPopup && millis() - lastClock >= 1000) {
+    lastClock = millis();
+    drawClock();
   }
 
-  // ===== URL encode spaces =====
-  name.replace(" ", "%20");
-  sharedInterest.replace(" ", "%20");
+  // close popup after 3 seconds -> THEN apply latest connection and redraw
+  if (showPopup && millis() - popupStart > 3000) {
+    showPopup = false;
 
-  // ===== Send to LCD =====
-  HTTPClient http;
+    // apply latest connection now
+    if (pendingConnectionUpdate) {
+      connectedName     = pendingName;
+      connectedUID      = pendingUID;
+      connectedNum      = pendingNum;
+      connectedInterest = pendingInterest;
+      hasConnection = true;
+      pendingConnectionUpdate = false;
+    }
 
-  String url = lcdServer + "?uid=" + uid +
-               "&name=" + name +
-               "&num=" + num +
-               "&interest=" + sharedInterest;
+    drawScreen();   // clears rays + updates CONNECTED to newest
+    drawClock();
+  }
 
-  Serial.println("Sending to LCD:");
-  Serial.println(url);
-
-  http.begin(url);
-  int httpCode = http.GET();
-
-  Serial.print("HTTP Code: ");
-  Serial.println(httpCode);
-
-  http.end();
-
-  mfrc522.PICC_HaltA();
+  delay(10);
 }
