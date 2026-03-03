@@ -1,5 +1,5 @@
 # 🧊 IceBreaker: The Smart Wearable Networking Badge 
-Introducing : Link Sling
+Introducing Link Sling
 
 **Conferences and tradeshows are great places to make connections, but how do you know who to approach and keep track of all the new faces afterwards? That's where IceBreaker comes in!**
 
