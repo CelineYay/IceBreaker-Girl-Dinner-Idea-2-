@@ -1,0 +1,341 @@
+#include <Arduino_GFX_Library.h>
+#include <Adafruit_GFX.h>
+#include <Fonts/FreeSans9pt7b.h>
+#include <Fonts/FreeSansBold9pt7b.h>
+#include <Wire.h>
+#include <WiFi.h>
+#include "time.h"
+
+#define I2C_SDA 21
+#define I2C_SCL 22
+#define PIN_BL  25
+
+#define C(r,g,b) (uint16_t)(((uint16_t)(r&0xF8)<<8)|((uint16_t)(g&0xFC)<<3)|(b>>3))
+
+Arduino_DataBus *bus = new Arduino_ESP32SPI(27, 5, 18, 23, 19);
+Arduino_GFX *gfx    = new Arduino_ST7796(bus, GFX_NOT_DEFINED, 0, true);
+
+#define WIFI_SSID  "SUTD_Guest"
+#define WIFI_PASS  ""
+#define NTP_SERVER "pool.ntp.org"
+#define GMT_OFFSET 28800
+#define DST_OFFSET 0
+
+#define WHITE      C(255,255,255)
+#define DARK_TEXT  C( 45, 55, 72)
+#define MID_TEXT   C(113,128,150)
+#define LIGHT_TEXT C(160,174,192)
+#define PURPLE     C(123, 97,255)
+#define ORANGE     C(240,139, 77)
+#define CARD_BG    C(255,255,255)
+#define CARD_BDR   C(214,204,255)
+#define BAR_BG     C(237,242,247)
+#define GREEN_CON  C(  0,180, 90)
+#define HEADER_BG  C(123, 97,255)
+
+#define TAG_UX_TXT  C(123, 97,255)
+#define TAG_UX_BG   C(240,236,255)
+#define TAG_UX_BDR  C(214,204,255)
+#define TAG_IOT_TXT C(  0,163,196)
+#define TAG_IOT_BG  C(230,255,250)
+#define TAG_IOT_BDR C(178,245,234)
+#define TAG_AI_TXT  C(240,139, 77)
+#define TAG_AI_BG   C(255,245,240)
+#define TAG_AI_BDR  C(254,235,200)
+#define TAG_ST_TXT  C(237,100,166)
+#define TAG_ST_BG   C(255,245,247)
+#define TAG_ST_BDR  C(254,215,226)
+
+#define MY_NAME    "Wong Yu Xuan"
+#define MY_TITLE   "Student"
+#define MY_COMPANY "SUTD"
+#define MY_PHONE   "+65 12873425"
+#define MY_EMAIL   "wyx@gmail.com"
+
+const char* MON[] = {
+  "JAN","FEB","MAR","APR","MAY","JUN",
+  "JUL","AUG","SEP","OCT","NOV","DEC"
+};
+
+void fillRR(int16_t x,int16_t y,int16_t w,int16_t h,int16_t r,uint16_t c){
+  gfx->fillRoundRect(x,y,w,h,r,c);
+}
+void drawRR(int16_t x,int16_t y,int16_t w,int16_t h,int16_t r,uint16_t c){
+  gfx->drawRoundRect(x,y,w,h,r,c);
+}
+
+void printSans(int x, int y, const char* txt, uint16_t col) {
+  gfx->setFont(&FreeSans9pt7b);
+  gfx->setTextColor(col);
+  gfx->setCursor(x, y);
+  gfx->print(txt);
+  gfx->setFont(NULL);
+}
+
+void printSansBold(int x, int y, const char* txt, uint16_t col) {
+  gfx->setFont(&FreeSansBold9pt7b);
+  gfx->setTextColor(col);
+  gfx->setCursor(x, y);
+  gfx->print(txt);
+  gfx->setFont(NULL);
+}
+
+void printLabel(int x, int y, const char* txt, uint16_t col) {
+  gfx->setFont(NULL);
+  gfx->setTextSize(1);
+  gfx->setTextColor(col);
+  gfx->setCursor(x, y);
+  gfx->print(txt);
+}
+
+void drawBackground() {
+  for (int i = 0; i < 480; i++) {
+    float t   = (float)i / 479.0f;
+    uint8_t r = 240 + (uint8_t)((253-240)*t);
+    uint8_t g = 139 + (uint8_t)((242-139)*t);
+    uint8_t b =  77 + (uint8_t)((233- 77)*t);
+    gfx->drawFastHLine(0, i, 320, C(r,g,b));
+  }
+}
+
+void drawClock() {
+  struct tm t;
+  if (!getLocalTime(&t)) return;
+
+  gfx->fillRect(0, 0, 320, 54, HEADER_BG);
+  gfx->drawFastHLine(0, 54, 320, C(90,60,200));
+  printSansBold(76, 22, "IDEA EVENT", WHITE);
+  gfx->drawFastHLine(0, 30, 320, C(180,160,255));
+
+  char tbuf[12];
+  sprintf(tbuf, "%02d:%02d:%02d", t.tm_hour, t.tm_min, t.tm_sec);
+  char dbuf[14];
+  sprintf(dbuf, "%02d %s %04d", t.tm_mday, MON[t.tm_mon], t.tm_year+1900);
+  printLabel(14, 40, tbuf, C(220,210,255));
+  printLabel(200, 40, dbuf, C(220,210,255));
+}
+
+void drawScreen() {
+  drawBackground();
+
+  int px = 12;
+  int cw = 296;
+
+  // ── HEADER ────────────────────────────────────────────────
+  gfx->fillRect(0, 0, 320, 54, HEADER_BG);
+  gfx->drawFastHLine(0, 54, 320, C(90,60,200));
+  printSansBold(76, 22, "IDEA EVENT", WHITE);
+  gfx->drawFastHLine(0, 30, 320, C(180,160,255));
+  printLabel(14, 40, "--:--:--",    C(220,210,255));
+  printLabel(200, 40, "-- --- ----", C(220,210,255));
+
+  // ── Layout y=60 to y=480 = 420px
+  // Profile:120 + gap:4 + Interests:64 + gap:4 + Matches:148 + gap:4 + Connected:76 = 420 ✓
+  int y = 60;
+
+  // ── PROFILE CARD  h=120 ───────────────────────────────────
+  int profileH = 120;
+  fillRR(px, y, cw, profileH, 10, CARD_BG);
+  drawRR(px, y, cw, profileH, 10, CARD_BDR);
+  fillRR(px, y+8, 3, profileH-16, 2, PURPLE);
+
+  // Name — baseline y+22
+  printSansBold(px+12, y+22, MY_NAME, PURPLE);
+
+  // "Student" on its own x, then dot, then "SUTD" with enough gap
+  // FreeSansBold "Student" = 7 chars * 10px = 70px wide
+  int titleBaseY = y+44;
+  printSansBold(px+12, titleBaseY, "Student", ORANGE);
+  gfx->fillCircle(px+12+76, titleBaseY-4, 2, LIGHT_TEXT); // dot at x=100
+  printSans(px+12+84, titleBaseY, "SUTD", MID_TEXT);       // SUTD starts at x=108
+
+  // Divider
+  gfx->drawFastHLine(px+8, y+54, cw-16, CARD_BDR);
+
+  // TEL — label width ~30px, value starts at fixed x=px+52
+  printSansBold(px+12, y+74, "TEL", ORANGE);
+  printSans(px+52, y+74, MY_PHONE, DARK_TEXT);
+
+  // EML — same x alignment
+  printSansBold(px+12, y+96, "EML", ORANGE);
+  printSans(px+52, y+96, MY_EMAIL, DARK_TEXT);
+
+  y += profileH + 4;
+
+  // ── INTERESTS CARD  h=64 ──────────────────────────────────
+  // Pills must fit all 4 tags in one row within cw=296
+  // Available tag space: 296 - 12(left pad) - 8(right pad) = 276px
+  // 4 tags + 3 gaps of 5px = 276px → each tag avg 66px but varies
+  // Measured tag widths with FreeSans9pt (9px/char) + 20px padding:
+  // "UX Design"=9ch=81+20=101 → too wide, scale down padding to 14:
+  // "UX Design"=9*9+14=95, "IoT"=3*9+14=41, "AI/ML"=5*9+14=59, "StartUps"=8*9+14=86
+  // Total = 95+41+59+86 + 3*5 = 281+15 = 296 → exactly fits ✓
+  int interestH = 64;
+  fillRR(px, y, cw, interestH, 10, CARD_BG);
+  drawRR(px, y, cw, interestH, 10, CARD_BDR);
+  fillRR(px, y+6, 3, interestH-12, 2, PURPLE);
+
+  printLabel(px+12, y+10, "CORE INTERESTS", LIGHT_TEXT);
+
+  struct { const char* lbl; uint16_t txt,bg,bdr; int w; } tags[4] = {
+    { "UX Design", TAG_UX_TXT,  TAG_UX_BG,  TAG_UX_BDR,  95 },
+    { "IoT",       TAG_IOT_TXT, TAG_IOT_BG, TAG_IOT_BDR, 41 },
+    { "AI/ML",     TAG_AI_TXT,  TAG_AI_BG,  TAG_AI_BDR,  59 },
+    { "StartUp",  TAG_ST_TXT,  TAG_ST_BG,  TAG_ST_BDR,  75 },
+  };
+  // Total = 95+41+59+86 + 3 gaps*5 = 296 ✓
+
+  int tx = px+8, ty = y+26;
+  for (int i = 0; i < 4; i++) {
+    fillRR(tx, ty, tags[i].w, 26, 13, tags[i].bg);
+    drawRR(tx, ty, tags[i].w, 26, 13, tags[i].bdr);
+    gfx->setFont(&FreeSans9pt7b);
+    gfx->setTextColor(tags[i].txt);
+    gfx->setCursor(tx+7, ty+18);
+    gfx->print(tags[i].lbl);
+    gfx->setFont(NULL);
+    tx += tags[i].w + 5;
+  }
+
+  y += interestH + 4;
+
+  // ── TOP MATCHES CARD  h=148 ───────────────────────────────
+  int matchH = 148;
+  fillRR(px, y, cw, matchH, 10, CARD_BG);
+  drawRR(px, y, cw, matchH, 10, CARD_BDR);
+  fillRR(px, y+6, 3, matchH-12, 2, PURPLE);
+
+  printLabel(px+12, y+10, "TOP MATCHES", LIGHT_TEXT);
+
+  struct {
+    const char* name;
+    const char* skills;
+    uint8_t     pct;
+  } matches[3] = {
+    { "David Tan",   "UX . IoT",  88 },
+    { "Sarah Lim",   "AI/ML",     75 },
+    { "Amir Hassan", "StartUps",  62 },
+  };
+
+  int barX = px+12;
+  int barW = 184;
+  int pctX = barX + barW + 4;
+  int my   = y + 20;
+
+  for (int i = 0; i < 3; i++) {
+    fillRR(px+8, my, cw-16, 40, 6, C(248,250,252));
+    drawRR(px+8, my, cw-16, 40, 6, C(226,232,240));
+
+    // Name — SansBold baseline my+16
+    printSansBold(px+14, my+16, matches[i].name, DARK_TEXT);
+
+    // Skills — pixel label top-right
+    printLabel(px+cw-14-strlen(matches[i].skills)*6, my+5, matches[i].skills, MID_TEXT);
+
+    // Bar
+    int by = my+26;
+    fillRR(barX, by, barW, 7, 3, BAR_BG);
+    int fw = (barW * matches[i].pct) / 100;
+    fillRR(barX, by, fw, 7, 3, ORANGE);
+
+    char pbuf[5];
+    sprintf(pbuf, "%d%%", matches[i].pct);
+    printLabel(pctX, by, pbuf, PURPLE);
+
+    my += 42;
+  }
+
+  y += matchH + 4;
+
+  // ── CONNECTED CARD — fills to bottom ──────────────────────
+  int conH = 480 - y - 2;
+  fillRR(px, y, cw, conH, 10, CARD_BG);
+  drawRR(px, y, cw, conH, 10, CARD_BDR);
+  fillRR(px, y+6, 3, conH-12, 2, GREEN_CON);
+
+  printLabel(px+12, y+10, "CONNECTED", LIGHT_TEXT);
+
+  // Avatar
+  int avCX = px+30;
+  int avCY = y + conH/2 + 4;
+  gfx->fillCircle(avCX, avCY, 16, PURPLE);
+
+  // "Abby"
+  printSansBold(avCX+24, avCY-4, "Abby", DARK_TEXT);
+
+  // "UX Design" tag — FreeSans9pt "UX Design"=9ch*9px+20pad = 101px wide, h=24
+  int utw = 101;
+  int uth = 24;
+  fillRR(avCX+24, avCY+8, utw, uth, 12, TAG_UX_BG);
+  drawRR(avCX+24, avCY+8, utw, uth, 12, TAG_UX_BDR);
+  gfx->setFont(&FreeSans9pt7b);
+  gfx->setTextColor(TAG_UX_TXT);
+  gfx->setCursor(avCX+31, avCY+24);
+  gfx->print("UX Design");
+  gfx->setFont(NULL);
+
+  // "Connected" badge — FreeSans9pt "Connected"=9ch*9px+20pad=101px, h=24
+  int bdgW = 101;
+  int bdgH = 24;
+  int bdgX = px+cw-bdgW-8;
+  int bdgY = avCY - bdgH/2;
+  fillRR(bdgX, bdgY, bdgW, bdgH, 12, C(220,252,231));
+  drawRR(bdgX, bdgY, bdgW, bdgH, 12, C(134,239,172));
+  gfx->setFont(&FreeSans9pt7b);
+  gfx->setTextColor(GREEN_CON);
+  gfx->setCursor(bdgX+8, bdgY+17);
+  gfx->print("Connected");
+  gfx->setFont(NULL);
+}
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(I2C_SDA, I2C_SCL);
+
+  Wire.beginTransmission(0x20);
+  Wire.write(0x03); Wire.write(0xFE); Wire.endTransmission();
+  Wire.beginTransmission(0x20);
+  Wire.write(0x01); Wire.write(0xFF); Wire.endTransmission();
+  delay(10);
+  Wire.beginTransmission(0x20);
+  Wire.write(0x01); Wire.write(0xFE); Wire.endTransmission();
+  delay(20);
+  Wire.beginTransmission(0x20);
+  Wire.write(0x01); Wire.write(0xFF); Wire.endTransmission();
+  delay(200);
+
+  pinMode(PIN_BL, OUTPUT);
+  digitalWrite(PIN_BL, HIGH);
+  gfx->begin();
+
+  drawBackground();
+  gfx->fillRect(0, 0, 320, 54, HEADER_BG);
+  printSansBold(76, 22, "IDEA EVENT", WHITE);
+  printLabel(70, 240, "Connecting to WiFi...", C(220,210,255));
+  printLabel(100, 256, WIFI_SSID, C(220,210,255));
+
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  int tries = 0;
+  while (WiFi.status() != WL_CONNECTED && tries < 20) {
+    delay(500); tries++;
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    configTime(GMT_OFFSET, DST_OFFSET, NTP_SERVER);
+    struct tm t;
+    int sync = 0;
+    while (!getLocalTime(&t) && sync < 10) {
+      delay(500); sync++;
+    }
+  }
+
+  drawScreen();
+  drawClock();
+}
+
+uint32_t lastClock = 0;
+void loop() {
+  if (millis() - lastClock >= 1000) {
+    lastClock = millis();
+    drawClock();
+  }
+}
