@@ -5,7 +5,10 @@ Introducing Link Sling
 
 IceBreaker is an end-to-end IoT networking ecosystem. It combines a custom-engineered wearable digital badge (ESP32-S3) with a full-stack web platform to calculate real-time attendee matchmaking, facilitate effortless digital business card exchanges via RFID, and log your connections seamlessly.
 
+[Link Sling]
+![photo_2026-03-03_16-20-04](https://github.com/user-attachments/assets/cab42f15-e3d8-4c23-a759-9f5f11f7242c)
 ---
+
 
 ## ✨ How It Works
 
@@ -32,6 +35,9 @@ This project is divided into three highly integrated subsystems:
 * **Wearability:** Features a structural, modular lanyard attachment loop tested to comfortably support the device weight.
 * **Bezel:** A flush top faceplate designed to secure the LCD without cracking the glass while providing a clean, premium viewing window.
 * **Accessibility:** Iterated USB-C aperture for seamless power delivery and programming.
+* Mechanical CAD Exploded View
+* ![Screenshot 2026-03-03 162250](https://github.com/user-attachments/assets/0e3c6cfc-f7c0-42d8-ae09-4b0dbaa4732e)
+
 
 ### 3. Compute & Web Platform 
 * **Web Dashboard:** A responsive web app featuring a warm orange/purple UI.
