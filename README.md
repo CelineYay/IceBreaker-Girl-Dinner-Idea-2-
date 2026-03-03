@@ -24,7 +24,7 @@ This project is divided into three highly integrated subsystems:
 * **Microcontroller:** Waveshare ESP32-S3 Touch LCD 3.5" Module.
 * **Display Driver:** ST7796 TFT Display communicating via internal SPI (`Arduino_GFX_Library`).
 * **Power Management:** AXP2101 PMIC communicating via I²C, actively monitoring a 500mAh Li-Po battery for live telemetry.
-* **Interaction:** Built-in RFID reader for physical "tapping" to trigger digital handshakes.
+* **Interaction:** RFID reader for physical "tapping" to trigger digital handshakes.
 * **UI Design:** A premium, glassmorphism-inspired C++ graphical interface that displays the user's profile, core interests, live matchmaking progress bars, and successfully connected peers.
 
 ### 2. Mechanical Structure (The Enclosure)
