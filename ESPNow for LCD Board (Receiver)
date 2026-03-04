@@ -83,9 +83,10 @@ String pendingNum      = "";
 String pendingInterest = "";
 
 // ---------------- Popup state ----------------
-bool showPopup   = false;
-uint32_t popupStart = 0;
-uint32_t lastClock  = 0;
+bool showPopup       = false;
+bool pendingPopupDraw = false;  // ✅ flag to trigger drawing from loop(), not callback
+uint32_t popupStart  = 0;
+uint32_t lastClock   = 0;
 
 String popupName     = "";
 String popupUID      = "";
@@ -420,12 +421,9 @@ void onDataRecv(const esp_now_recv_info_t *info, const uint8_t *data, int len) {
   popupUID      = pendingUID;
   popupInterest = pendingInterest;
 
-  showPopup  = true;
-  popupStart = millis();
-
-  // ✅ Just draw rays + popup — no full screen redraw here
-  drawRaysBehindPopup();
-  drawPopup();
+  showPopup       = true;
+  pendingPopupDraw = true;  // ✅ signal loop() to draw — NEVER draw inside callback
+  popupStart      = millis();
 }
 
 // ---------------- Setup ----------------
@@ -494,13 +492,20 @@ void loop() {
     Serial.println("[LCD] alive...");
   }
 
+  // ✅ Draw popup from loop() — safe context for SPI/LCD operations
+  if (pendingPopupDraw) {
+    pendingPopupDraw = false;
+    drawRaysBehindPopup();
+    drawPopup();
+  }
+
   // Update clock every second when popup not showing
   if (!showPopup && millis() - lastClock >= 1000) {
     lastClock = millis();
     drawClock();
   }
 
-  // Close popup after 3 seconds -> update connected card only (no full redraw)
+  // Close popup after 3 seconds
   if (showPopup && millis() - popupStart > 3000) {
     showPopup = false;
 
@@ -513,8 +518,8 @@ void loop() {
       pendingConnectionUpdate = false;
     }
 
-    // ✅ Only redraw the connected card — fast, no gradient redraw
-    drawConnectedCard();
+    // ✅ Full screen redraw — rays have corrupted the background
+    drawScreen();
     drawClock();
   }
 
