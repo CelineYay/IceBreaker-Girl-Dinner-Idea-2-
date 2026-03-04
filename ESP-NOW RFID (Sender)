@@ -13,6 +13,7 @@ MFRC522 mfrc522(SS_PIN, RST_PIN);
 #define ESPNOW_CHANNEL 1
 
 // ✅ LCD MAC address
+//uint8_t lcdMac[] = { 0x20, 0xE7, 0xC8, 0xD2, 0xC6, 0x48 };
 uint8_t lcdMac[] = { 0x20, 0xE7, 0xC8, 0xD2, 0xC5, 0xE8 };
 
 typedef struct __attribute__((packed)) {
@@ -66,10 +67,13 @@ void uidToHex(const MFRC522::Uid &u, char out[12]) {
            u.uidByte[0], u.uidByte[1], u.uidByte[2], u.uidByte[3]);
 }
 
-// ================= ESP-NOW send callback =================
+// ================= ESP-NOW send tracking =================
+volatile bool lastSendDone    = false;
+volatile bool lastSendSuccess = false;
+
 void onSendCallback(const wifi_tx_info_t *info, esp_now_send_status_t status) {
-  Serial.print("[RFID] Delivery: ");
-  Serial.println(status == ESP_NOW_SEND_SUCCESS ? "SUCCESS" : "FAILED");
+  lastSendSuccess = (status == ESP_NOW_SEND_SUCCESS);
+  lastSendDone    = true;
 }
 
 // ================= ESP-NOW setup =================
@@ -84,6 +88,9 @@ void setupEspNow() {
   esp_wifi_set_promiscuous(true);
   esp_wifi_set_channel(ESPNOW_CHANNEL, WIFI_SECOND_CHAN_NONE);
   esp_wifi_set_promiscuous(false);
+
+  // ✅ Lock WiFi channel so it doesn't drift on ESP32-C3
+  esp_wifi_set_country_code("SG", true);  // prevents auto-channel changes
 
   if (esp_now_init() != ESP_OK) {
     Serial.println("[RFID] ESP-NOW init failed!");
@@ -105,9 +112,11 @@ void setupEspNow() {
 }
 
 // ================= Setup =================
+// ⚠️ ESP32-C3: In Arduino IDE, go to Tools and set "USB CDC On Boot" to "Enabled"
+//    otherwise Serial prints will NOT appear in Serial Monitor.
 void setup() {
   Serial.begin(115200);
-  delay(1000); // ✅ longer delay so Serial Monitor catches boot messages
+  delay(2000); // ✅ ESP32-C3 USB CDC needs extra time to enumerate before printing
   Serial.println("[RFID] Booting...");
 
   SPI.begin(4, 5, 6, SS_PIN);
@@ -120,6 +129,41 @@ void setup() {
   Serial.println("[RFID] Tap a card...");
 }
 
+// ================= Send with retry =================
+#define SEND_RETRIES    3
+#define SEND_TIMEOUT_MS 100  // max wait for delivery callback per attempt
+
+bool sendWithRetry(const uint8_t* peer, const uint8_t* data, size_t len) {
+  for (int attempt = 1; attempt <= SEND_RETRIES; attempt++) {
+    lastSendDone    = false;
+    lastSendSuccess = false;
+
+    esp_err_t result = esp_now_send(peer, data, len);
+    if (result != ESP_OK) {
+      Serial.printf("[RFID] Send attempt %d queue FAIL\n", attempt);
+      delay(50);
+      continue;
+    }
+
+    // ✅ Wait for the delivery callback to confirm success/failure
+    uint32_t t0 = millis();
+    while (!lastSendDone && (millis() - t0) < SEND_TIMEOUT_MS) {
+      delay(1);  // yield to WiFi task on single-core C3
+    }
+
+    if (lastSendDone && lastSendSuccess) {
+      Serial.printf("[RFID] Delivery SUCCESS (attempt %d)\n", attempt);
+      return true;
+    }
+
+    Serial.printf("[RFID] Delivery FAILED (attempt %d) — retrying...\n", attempt);
+    delay(50);  // small gap before retry
+  }
+
+  Serial.println("[RFID] All retries exhausted!");
+  return false;
+}
+
 // ================= Loop =================
 void loop() {
   // Heartbeat every 3 seconds so you know the board is alive
@@ -129,8 +173,13 @@ void loop() {
     Serial.println("[RFID] waiting for card...");
   }
 
-  // ✅ Reset the reader properly before each scan attempt
-  mfrc522.PCD_Init();
+  // ✅ Re-init RFID reader every 2 seconds instead of every loop
+  //    PCD_Init() is heavy SPI traffic — doing it 20x/sec starves the WiFi stack
+  static uint32_t lastRFIDInit = 0;
+  if (millis() - lastRFIDInit > 2000) {
+    lastRFIDInit = millis();
+    mfrc522.PCD_Init();
+  }
 
   if (!mfrc522.PICC_IsNewCardPresent()) {
     delay(50);
@@ -174,13 +223,13 @@ void loop() {
     Serial.printf("[RFID] Unknown card UID=%s\n", hexUID);
   }
 
-  // Send to LCD
-  esp_err_t result = esp_now_send(lcdMac, (uint8_t*)&msg, sizeof(msg));
-  Serial.print("[RFID] Send queued: ");
-  Serial.println(result == ESP_OK ? "OK" : "FAIL");
-
-  // ✅ Properly halt and reset card reader
+  // ✅ Halt RFID before sending — stops SPI traffic so WiFi stack gets clean air
   mfrc522.PICC_HaltA();
   mfrc522.PCD_StopCrypto1();
-  delay(500); // ✅ increased from 200 — gives card time to leave field
+  delay(10);  // ✅ brief yield so WiFi task can run on single-core C3
+
+  // Send to LCD with retry
+  sendWithRetry(lcdMac, (uint8_t*)&msg, sizeof(msg));
+
+  delay(500); // give card time to leave field
 }
