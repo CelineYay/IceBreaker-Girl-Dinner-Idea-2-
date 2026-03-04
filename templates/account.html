@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <title>ICE BREAKER</title>
+    <link rel="icon" href="../static/img/icon.ico" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="wrapper">
+        <header class="header">
+            <div class="container">
+                <div class="header__inner">
+                    <a class="logo">
+                        <span class="logo__text">ICE BREAKER</span>
+                    </a>
+                    <nav class="menu">
+                        <ul class="menu__list">
+                            <li class="menu__list-item">
+                                <a href="#devices" class="menu__list-link">my devices</a>
+                            </li>
+                            <li class="menu__list-item">
+                                <a href="#events" class="menu__list-link">my events</a>
+                            </li>
+                            <li class="menu__list-item">
+                                <a href="/account/matches" class="menu__list-link">my matches</a>
+                            </li>
+                            <li class="menu__list-item">
+                                <a href="/sign_out" class="menu__list-link">sign out</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </header>
+       
+        <main class="main">
+            <section class="section">
+                <div class="container">
+                    <h1>Hello, {{ user.name }}</h1>
+                    <div class="devices" id="devices">
+                        <h2>My devices</h2>
+                        {% for device in devices %}
+                            <div class="device">
+                                <h3>{{ device.name }}</h3>
+                                <img src="../static/img/layout.png" alt="Ice Breaker badge">
+                                
+                                <form action="{{ url_for('delete_link_sling', device_id=device.id) }}" method="POST">
+                                    <button type="submit" class="device__btn">DELETE</button>
+                                </form>
+                            </div>
+                        {% else %}
+                            <p class="events__empty">You haven't added any link slings yet.</p>
+                        {% endfor %}
+                    </div>
+                    <a class="account_btn" href="#">ADD NEW LINK SLING</a>
+                    
+                    <div class="events" id="events">
+                        <h2>Events you are registered to</h2>
+                        {% for event in plan_events %}
+                            <div class="event">
+                                <h3>{{ event.name }}</h3>
+                                <p>{{ event.location }}</p>
+                                <p><strong>Event dates:</strong> from {{ event.start_date }} to {{ event.end_date }}</p>
+                                {% if event.id in visit_dates %}
+                                    <p><strong>Your visit:</strong> from {{ visit_dates[event.id].start.strftime('%Y-%m-%d %H:%M') }} to {{ visit_dates[event.id].end.strftime('%Y-%m-%d %H:%M') }}</p>
+                                    <p><strong>Your goals:</strong> {{ visit_dates[event.id].goals }}</p>
+                                {% endif %}
+                                <p>{{ event.description }}</p>
+                                <a href="/account/matches" class="event__btn">
+                                    VIEW MATCHES
+                                </a>
+                            </div>
+                        {% else %}
+                            <p class="events__empty">You haven't visited any events yet.</p>
+                        {% endfor %}
+                        <h2>Organised events</h2>
+                        {% for event in organised_events %}
+                            <div class="event">
+                                <h3>{{ event.name }}</h3>
+                                <p>{{ event.location }}</p>
+                                <p>from {{ event.start_date }} to {{ event.end_date }}</p>
+                                <p>{{ event.description }}</p>
+                            </div>
+                        {% else %}
+                            <p class="events__empty">You haven't organised any events yet.</p>
+                        {% endfor %}
+                        <a class="account_btn" href="/account/organise_new_event">ORGANISE NEW EVENT</a>
+                        <h2>All events</h2>
+                        {% for event in all_events %}
+                            <div class="event">
+                                <h3>{{ event.name }}</h3>
+                                <p>{{ event.location }}</p>
+                                <p>from {{ event.start_date }} to {{ event.end_date }}</p>
+                                <p>{{ event.description }}</p>
+                                
+                                {% if event.id in registered_event_ids %}
+                                    <p style="color: #FF843D;">You are already registered</p>
+                                {% else %}
+                                    <!-- Если пользователь не зарегистрирован -->
+                                    <a href="{{ url_for('event_registration', event_id=event.id) }}" class="event__btn">
+                                        REGISTER
+                                    </a>
+                                {% endif %}
+                            </div>
+                        {% else %}
+                            <p class="events__empty">There are no events.</p>
+                        {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="../static/js/script.js"></script>
+</body>
+</html>

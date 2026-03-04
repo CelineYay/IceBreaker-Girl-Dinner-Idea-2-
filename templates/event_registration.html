@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Language" content="en">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <title>ICE BREAKER</title>
+    <link rel="icon" href="../static/img/icon.ico" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="wrapper">
+        <header class="header">
+            <div class="container">
+                <div class="header__inner">
+                    <a class="logo">
+                        <span class="logo__text">ICE BREAKER</span>
+                    </a>
+                    <nav class="menu">
+                        <ul class="menu__list">
+                            <li class="menu__list-item">
+                                <a href="/account" class="menu__list-link">my account</a>
+                            </li>
+                            <li class="menu__list-item">
+                                <a href="/sign_out" class="menu__list-link">sign out</a>
+                            </li>
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        </header>
+        
+        <main class="main">
+            <section class="section">
+                <div class="container">
+                    <h1>Find people who need you.</h1>
+                    
+                    <form method="post" class="form" enctype="multipart/form-data">
+                        <input class="form__input" name="goals" placeholder="Your interests at the exhibition (e.g. Career, IT, ML, Internship)" required>
+                        
+                        <div class="form__row">
+                            <input class="form__input form__input--half" type="datetime-local" name="visit_start_date" 
+                                   min="{{ event.start_date.strftime('%Y-%m-%dT%H:%M') }}" 
+                                   max="{{ event.end_date.strftime('%Y-%m-%dT%H:%M') }}" 
+                                   placeholder="When are you coming?" required>
+                            
+                            <input class="form__input form__input--half" type="datetime-local" name="visit_end_date" 
+                                   min="{{ event.start_date.strftime('%Y-%m-%dT%H:%M') }}" 
+                                   max="{{ event.end_date.strftime('%Y-%m-%dT%H:%M') }}" 
+                                   placeholder="When are you leaving?" required>
+                        </div>
+
+                        <div class="flash">
+                            {% for msg in get_flashed_messages() %}
+                                <div class="flash__item">
+                                    <p>{{ msg }}</p>
+                                </div>
+                            {% endfor %}
+                        </div>
+
+                        <button class="btn" type="submit">Register for Event</button>
+                    </form>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+</body>
+</html>

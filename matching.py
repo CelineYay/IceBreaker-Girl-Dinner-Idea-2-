@@ -3,9 +3,7 @@ import torch
 
 from app_and_db import db
 from device import get_user_by_device_rfid
-from exhibition import Exhibition, ExhibitionUser, find_current_simultaneous_visit, \
-    get_exhibition_user_by_exhibition_id_and_user_id
-from user import model
+from exhibition import find_current_simultaneous_visit, get_exhibition_user_by_exhibition_id_and_user_id
 
 
 class UsersMatch(db.Model):
@@ -79,6 +77,9 @@ def add_match(rfid1, rfid2):
     :param rfid2: second user's device's rfid
     :return: Bool
     """
+    from sentence_transformers import SentenceTransformer
+    model = SentenceTransformer("Qwen/Qwen3-Embedding-0.6B")
+
     user1 = get_user_by_device_rfid(rfid1)
     user2 = get_user_by_device_rfid(rfid2)
     match = find_match(user1, user2)

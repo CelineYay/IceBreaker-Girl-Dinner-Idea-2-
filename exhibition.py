@@ -51,16 +51,37 @@ class ExhibitionUser(db.Model):
         return '<ExhibitionUser {}>'.format(self.exhibition_name)
 
 
-def create_exhibition(name, organizer_id, location, description):
+def create_exhibition_user(exhibition_id, user_id, user_goals, exhibition_name, visit_start_date, visit_end_date):
+    """
+    Adds new ExhibitionUser
+    :param exhibition_id: exhibition_id
+    :param user_id: user_id
+    :param user_goals: user_goals (interests)
+    :param exhibition_name: exhibition_name
+    :param visit_start_date: date of visit (start)
+    :param visit_end_date: date of visit (end)
+    :return: None
+    """
+    new_exhibition_user = ExhibitionUser(exhibition_id=exhibition_id, user_id=user_id, user_goals=user_goals,
+                                         exhibition_name=exhibition_name, visit_start_date=visit_start_date,
+                                         visit_end_date=visit_end_date)
+    db.session.add(new_exhibition_user)
+    db.session.commit()
+
+
+def create_exhibition(name, organizer_id, location, description, start_date, end_date):
     """
     This function adds a new exhibition to the database
     :param name: name
     :param organizer_id: organizer_id
     :param location: location
     :param description: description
+    :param start_date: start_date
+    :param end_date: end_date
     :return: None
     """
-    new_exhibition = Exhibition(name=name, organizer_id=organizer_id, location=location, description=description)
+    new_exhibition = Exhibition(name=name, organizer_id=organizer_id, location=location, description=description,
+                                start_date=start_date, end_date=end_date)
     db.session.add(new_exhibition)
     db.session.commit()
 
@@ -72,6 +93,24 @@ def get_exhibition_by_id(id):
     :return: Exhibition
     """
     return Exhibition.query.filter_by(id=id).first()
+
+
+def get_exhibitions_by_user(user):
+    """
+    :param user: User
+    :return: list of items of the class Exhibition
+    """
+    exhibitions_user = ExhibitionUser.query.filter_by(user_id=user.id).all()
+    exhibitions = []
+    print(exhibitions_user)
+    for exhibition_user in exhibitions_user:
+        # You need to use .first() to get the actual object, not the query
+        exhibition = Exhibition.query.filter_by(id=exhibition_user.exhibition_id).first()
+        if exhibition:  # Check if exhibition exists
+            exhibitions.append(exhibition)
+            print(f"Found exhibition: {exhibition.name}")
+    print(f"Total exhibitions: {len(exhibitions)}")
+    return exhibitions
 
 
 def get_exhibition_user_by_exhibition_id_and_user_id(exhibition_id, user_id):

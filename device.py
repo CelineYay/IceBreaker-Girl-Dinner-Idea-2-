@@ -1,4 +1,4 @@
-from app_and_db import db
+from app_and_db import db, app
 from user import User
 
 
@@ -43,4 +43,31 @@ def get_user_by_device_rfid(rfid):
     return User.query.filter_by(id=device.owner_id).first()
 
 
+def get_devices_by_user(user):
+    """
+    This function finds all the user's devices
+    :param user: User
+    :return: list of items of the class Device
+    """
+    return Device.query.filter_by(owner_id=user.id).all()
 
+
+def get_device_by_device_id(device_id):
+    """
+    Deletes the device by its id
+    :param device_id: device_id
+    :return: Device
+    """
+    return Device.query.filter_by(id=device_id).first()
+
+
+def delete_device_by_device_id(device_id):
+    """
+    Deletes the device by its id
+    :param device_id: device_id
+    :return: None
+    """
+    with app.app_context():
+        device = Device.query.filter_by(id=device_id).first()
+        db.session.delete(device)
+        db.session.commit()
