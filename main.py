@@ -30,14 +30,14 @@ def load_user(user_id):
     return User.query.get(int(user_id))
 
 
-@app.errorhandler(Exception)
-def handle_exception(e):
-    """
-    Returns error page
-    :param e: error
-    :return: html
-    """
-    return render_template('error.html', error=str(e).split()[0])
+# @app.errorhandler(Exception)
+# def handle_exception(e):
+#     """
+#     Returns error page
+#     :param e: error
+#     :return: html
+#     """
+#     return render_template('error.html', error=str(e).split()[0])
 
 
 @app.route('/')
@@ -434,15 +434,17 @@ def download_resume(user_id):
         (UsersMatch.success is True)
     ).first()
 
-    if not match_exists:
-        abort(403, "You don't have permission to view this user's resume")
+    print(match_exists)
+
+    # if not match_exists:
+    #     abort(403, "You don't have permission to view this user's resume")
 
     user = get_user_by_id(user_id)
-    if not user or not user.linkedin_path:
-        abort(404, "Resume not found")
-
-    if not os.path.exists(user.linkedin_path):
-        abort(404, "Resume file not found")
+    # if not user or not user.linkedin_path:
+    #     abort(404, "Resume not found")
+    #
+    # if not os.path.exists(user.linkedin_path):
+    #     abort(404, "Resume file not found")
 
     return send_file(
         user.linkedin_path,
